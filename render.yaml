@@ -10,6 +10,6 @@ services:
         generateValue: true
       - key: BLOCKLIST
         # احجب المنصات المخالفة لسياسات Google Play
-        value: youtube.com,youtu.be,googlevideo.com,facebook.com,fbcdn.net
+        #value: youtube.com,youtu.be,googlevideo.com,facebook.com,fbcdn.net
       - key: ALLOW_ORIGINS
         value: *
