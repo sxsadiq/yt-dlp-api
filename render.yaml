@@ -1,7 +1,15 @@
 services:
   - type: web
-    name: yt-dlp-api
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
+    name: ytdlp-api
+    env: docker
     autoDeploy: true
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: API_KEY
+        generateValue: true
+      - key: BLOCKLIST
+        # احجب المنصات المخالفة لسياسات Google Play
+        value: youtube.com,youtu.be,googlevideo.com,facebook.com,fbcdn.net
+      - key: ALLOW_ORIGINS
+        value: *
