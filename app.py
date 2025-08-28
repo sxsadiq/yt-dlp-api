@@ -1,6 +1,6 @@
 import os
 from urllib.parse import urlparse
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +23,8 @@ app.add_middleware(
 
 class DirectReq(BaseModel):
     url: str
-    format: Optional[str] = "best"  # best | bestvideo+bestaudio | anche others if you want
+    format: Optional[str] = "best"
+    cookies: Optional[str] = None   # <<--- هنا أضفنا الكوكيز كـ string
 
 def domain_blocked(u: str) -> bool:
     try:
@@ -33,13 +34,11 @@ def domain_blocked(u: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in BLOCKLIST)
 
 def pick_best_progressive(info: Dict[str, Any]) -> Dict[str, Any]:
-    # اختر أفضل صيغة تجمع صوت+فيديو (progressive)
     fmts = info.get("formats", []) or []
     progressives = [
         f for f in fmts
         if (f.get("acodec") not in (None, "none")) and (f.get("vcodec") not in (None, "none"))
     ]
-    # رتب حسب معدل البت (tbr) إن وجد
     progressives.sort(key=lambda f: (f.get("tbr") or 0), reverse=True)
     return progressives[0] if progressives else None
 
@@ -59,14 +58,20 @@ def direct(req: DirectReq, x_api_key: Optional[str] = Header(None)):
     if BLOCKLIST and domain_blocked(req.url):
         raise HTTPException(status_code=403, detail="Domain is blocked by policy")
 
+    # خيارات yt-dlp
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
         "skip_download": True,
-        # لا تنزل شيء، فقط استخرج معلومات وروابط مباشرة
         "simulate": True,
+        "format": req.format or "best",
+        "http_headers": {}
     }
+
+    # لو فيه كوكيز من الريكوست، نضيفها
+    if req.cookies:
+        ydl_opts["http_headers"]["Cookie"] = req.cookies
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -79,10 +84,9 @@ def direct(req: DirectReq, x_api_key: Optional[str] = Header(None)):
         "webpage_url": info.get("webpage_url"),
         "duration": info.get("duration"),
         "uploader": info.get("uploader"),
-        "direct": []  # قائمة روابط مباشرة
+        "direct": []
     }
 
-    # حالة دمج صوت/فيديو: requested_formats
     if info.get("requested_formats"):
         for f in info["requested_formats"]:
             result["direct"].append({
@@ -93,7 +97,6 @@ def direct(req: DirectReq, x_api_key: Optional[str] = Header(None)):
                 "protocol": f.get("protocol"),
             })
     elif info.get("url"):
-        # صيغة واحدة مباشرة
         result["direct"].append({
             "url": info.get("url"),
             "ext": info.get("ext"),
@@ -102,7 +105,6 @@ def direct(req: DirectReq, x_api_key: Optional[str] = Header(None)):
             "protocol": info.get("protocol"),
         })
     else:
-        # اختر أفضل progressive
         best = pick_best_progressive(info)
         if best:
             result["direct"].append({
